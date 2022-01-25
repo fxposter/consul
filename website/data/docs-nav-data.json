@@ -626,6 +626,10 @@
       {
         "title": "Manual Installation",
         "path": "ecs/manual-installation"
+      },
+      {
+        "title": "Configuration Reference",
+        "path": "ecs/configuration-reference"
       }
     ]
   },
