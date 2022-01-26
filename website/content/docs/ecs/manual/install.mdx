@@ -112,11 +112,11 @@ this task and the service mesh.
 }
 ```
 
-| Field name  | Type    | Description                                                                                                                      |
-| ----------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `name`      | string  | The name of your application container.                                                                                          |
-| `image`     | string  | The container image used to run your application.                                                                                |
-| `essential` | boolean | Must be `true` to ensure your application container ties into the health of the task.                                            |
+| Field name  | Type    | Description                                                                                                                       |
+| ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------  |
+| `name`      | string  | The name of your application container.                                                                                           |
+| `image`     | string  | The container image used to run your application.                                                                                 |
+| `essential` | boolean | Must be `true` to ensure the health of your application container effects the health status of the task.                          |
 | `dependsOn` | list    | Must be set as shown above. Container dependencies ensure your application container starts after service mesh setup is complete. |
 
 See the [ECS Task Definition](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html) documentation for a complete reference.
