@@ -2012,6 +2012,7 @@ func testConfigSnapshotTerminatingGateway(t testing.T, populateServices bool) *C
 		}
 
 		snap.TerminatingGateway = configSnapshotTerminatingGateway{
+			ExternalServiceConfigs: make(map[structs.ServiceName]*structs.ExternalServiceConfigEntry),
 			ServiceGroups: map[structs.ServiceName]structs.CheckServiceNodes{
 				web:   webNodes,
 				api:   apiNodes,

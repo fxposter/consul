@@ -495,6 +495,23 @@ func TestListenersFromSnapshot(t *testing.T) {
 			},
 		},
 		{
+			name:   "terminating-gateway-with-external-service-defined",
+			create: proxycfg.TestConfigSnapshotTerminatingGateway,
+			setup: func(snap *proxycfg.ConfigSnapshot) {
+				serviceName := structs.NewServiceName("web", nil)
+				snap.TerminatingGateway.ExternalServiceConfigs[serviceName] = &structs.ExternalServiceConfigEntry{
+					Kind: structs.ExternalService,
+					Name: "web",
+					Type: structs.ExternalServiceConfigEntryTypeAWSLambda,
+					AWSLambda: structs.ExternalServiceConfigEntryAWSLambda{
+						ARN:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
+						PayloadPassthrough: true,
+						Region:             "us-east-2",
+					},
+				}
+			},
+		},
+		{
 			name:   "ingress-http-multiple-services",
 			create: proxycfg.TestConfigSnapshotIngress_HTTPMultipleServices,
 			setup: func(snap *proxycfg.ConfigSnapshot) {

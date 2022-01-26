@@ -380,6 +380,17 @@ func ingressConfigWatchEvent(gwTLS bool, mixedTLS bool) cache.UpdateEvent {
 	}
 }
 
+var externalService = &structs.ExternalServiceConfigEntry{
+	Name: "external-service",
+	Kind: structs.ExternalService,
+	Type: structs.ExternalServiceConfigEntryTypeAWSLambda,
+	AWSLambda: structs.ExternalServiceConfigEntryAWSLambda{
+		ARN:                "123",
+		Region:             "234",
+		PayloadPassthrough: true,
+	},
+}
+
 func upstreamIDForDC2(uid UpstreamID) UpstreamID {
 	uid.Datacenter = "dc2"
 	return uid
@@ -1606,6 +1617,21 @@ func TestState_WatchesAndUpdates(t *testing.T) {
 
 						require.Len(t, snap.TerminatingGateway.ServiceResolvers, 1)
 						require.Equal(t, dbResolver.Entries[0], snap.TerminatingGateway.ServiceResolvers[db])
+					},
+				},
+				{
+					events: []cache.UpdateEvent{
+						{
+							CorrelationID: externalServiceConfigEntryID,
+							Result: &structs.IndexedConfigEntries{
+								Entries: []structs.ConfigEntry{externalService},
+							},
+							Err: nil,
+						},
+					},
+					verifySnapshot: func(t testing.TB, snap *ConfigSnapshot) {
+						require.True(t, snap.Valid(), "gateway with service list is valid")
+						require.Len(t, snap.TerminatingGateway.ExternalServiceConfigs, 1)
 					},
 				},
 				{

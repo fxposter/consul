@@ -204,6 +204,8 @@ type configSnapshotTerminatingGateway struct {
 	// HostnameServices is a map of service name to service instances with a hostname as the address.
 	// If hostnames are configured they must be provided to Envoy via CDS not EDS.
 	HostnameServices map[structs.ServiceName]structs.CheckServiceNodes
+
+	ExternalServiceConfigs map[structs.ServiceName]*structs.ExternalServiceConfigEntry
 }
 
 // ValidServices returns the list of service keys that have enough data to be emitted.
@@ -254,7 +256,8 @@ func (c *configSnapshotTerminatingGateway) IsEmpty() bool {
 		len(c.ServiceConfigs) == 0 &&
 		len(c.WatchedConfigs) == 0 &&
 		len(c.GatewayServices) == 0 &&
-		len(c.HostnameServices) == 0
+		len(c.HostnameServices) == 0 &&
+		len(c.ExternalServiceConfigs) == 0
 }
 
 type configSnapshotMeshGateway struct {

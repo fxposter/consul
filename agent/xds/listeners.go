@@ -16,6 +16,7 @@ import (
 	envoy_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_listener_v3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoy_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	envoy_lambda_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/aws_lambda/v3"
 	envoy_grpc_stats_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/grpc_stats/v3"
 	envoy_http_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoy_tcp_proxy_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
@@ -1125,10 +1126,67 @@ func (s *ResourceGenerator) makeFilterChainTerminatingGateway(
 		opts.useRDS = true
 	}
 
-	filter, err := makeListenerFilter(opts)
+	var filter *envoy_listener_v3.Filter
+
+	filter, err = makeListenerFilter(opts)
 	if err != nil {
 		return nil, err
 	}
+
+	if externalService, ok := cfgSnap.TerminatingGateway.ExternalServiceConfigs[service]; ok {
+		if externalService.Type == structs.ExternalServiceConfigEntryTypeAWSLambda {
+			httpFilter, err := makeEnvoyHTTPFilter(
+				"envoy.filters.http.aws_lambda",
+				&envoy_lambda_v3.Config{
+					Arn:                externalService.AWSLambda.ARN,
+					PayloadPassthrough: externalService.AWSLambda.PayloadPassthrough,
+				},
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			cfg := &envoy_http_v3.HttpConnectionManager{
+				HttpFilters: []*envoy_http_v3.HttpFilter{
+					httpFilter,
+					{Name: "envoy.filters.http.router"},
+				},
+				StatPrefix: makeStatPrefix(opts.statPrefix, opts.filterName),
+				RouteSpecifier: &envoy_http_v3.HttpConnectionManager_RouteConfig{
+					RouteConfig: &envoy_route_v3.RouteConfiguration{
+						Name: opts.routeName,
+						VirtualHosts: []*envoy_route_v3.VirtualHost{
+							{
+								Name:    opts.filterName,
+								Domains: []string{"*"},
+								Routes: []*envoy_route_v3.Route{
+									{
+										Match: &envoy_route_v3.RouteMatch{
+											PathSpecifier: &envoy_route_v3.RouteMatch_Prefix{
+												Prefix: "/",
+											},
+										},
+										Action: &envoy_route_v3.Route_Route{
+											Route: &envoy_route_v3.RouteAction{
+												ClusterSpecifier: &envoy_route_v3.RouteAction_Cluster{
+													Cluster: opts.cluster,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			filter, err = makeFilter("envoy.filters.network.http_connection_manager", cfg)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	filterChain.Filters = append(filterChain.Filters, filter)
 
 	return filterChain, nil

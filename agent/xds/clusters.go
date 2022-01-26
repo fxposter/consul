@@ -12,6 +12,7 @@ import (
 	envoy_tls_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	envoy_matcher_v3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	envoy_type_v3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	_struct "github.com/golang/protobuf/ptypes/struct"
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
@@ -297,6 +298,7 @@ func (s *ResourceGenerator) makeGatewayServiceClusters(
 			// Use a zero value resolver with no timeout and no subsets
 			resolver = &structs.ServiceResolverConfigEntry{}
 		}
+
 		if resolver.LoadBalancer != nil {
 			loadBalancer = resolver.LoadBalancer
 		}
@@ -317,6 +319,74 @@ func (s *ResourceGenerator) makeGatewayServiceClusters(
 			hostnameEndpoints: hostnameEndpoints,
 			connectTimeout:    resolver.ConnectTimeout,
 			isRemote:          isRemote,
+		}
+
+		if externalService, ok := cfgSnap.TerminatingGateway.ExternalServiceConfigs[svc]; ok {
+			if externalService.Type == structs.ExternalServiceConfigEntryTypeAWSLambda {
+				cfg, err := ParseGatewayConfig(cfgSnap.Proxy.Config)
+				if err != nil {
+					// Don't hard fail on a config typo, just warn. The parse func returns
+					// default config if there is an error so it's safe to continue.
+					s.Logger.Warn("failed to parse gateway config", "error", err)
+				}
+				if opts.connectTimeout <= 0 {
+					opts.connectTimeout = time.Duration(cfg.ConnectTimeoutMs) * time.Millisecond
+				}
+
+				transportSocket, err := makeUpstreamTLSTransportSocket(&envoy_tls_v3.UpstreamTlsContext{
+					Sni: "*.amazonaws.com",
+				})
+
+				if err != nil {
+					return clusters, err
+				}
+
+				cluster := &envoy_cluster_v3.Cluster{
+					Name:                 opts.name,
+					ConnectTimeout:       ptypes.DurationProto(opts.connectTimeout * time.Millisecond),
+					ClusterDiscoveryType: &envoy_cluster_v3.Cluster_Type{Type: envoy_cluster_v3.Cluster_LOGICAL_DNS},
+					DnsLookupFamily:      envoy_cluster_v3.Cluster_V4_ONLY,
+					LbPolicy:             envoy_cluster_v3.Cluster_ROUND_ROBIN,
+					Metadata: &envoy_core_v3.Metadata{
+						FilterMetadata: map[string]*_struct.Struct{
+							"com.amazonaws.lambda": {
+								Fields: map[string]*_struct.Value{
+									"egress_gateway": {Kind: &_struct.Value_BoolValue{BoolValue: true}},
+								},
+							},
+						},
+					},
+					LoadAssignment: &envoy_endpoint_v3.ClusterLoadAssignment{
+						ClusterName: opts.name,
+						Endpoints: []*envoy_endpoint_v3.LocalityLbEndpoints{
+							{
+								LbEndpoints: []*envoy_endpoint_v3.LbEndpoint{
+									{
+										HostIdentifier: &envoy_endpoint_v3.LbEndpoint_Endpoint{
+											Endpoint: &envoy_endpoint_v3.Endpoint{
+												Address: &envoy_core_v3.Address{
+													Address: &envoy_core_v3.Address_SocketAddress{
+														SocketAddress: &envoy_core_v3.SocketAddress{
+															Address: fmt.Sprintf("lambda.%s.amazonaws.com", externalService.AWSLambda.Region),
+															PortSpecifier: &envoy_core_v3.SocketAddress_PortValue{
+																PortValue: 443,
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					TransportSocket: transportSocket,
+				}
+
+				clusters = append(clusters, cluster)
+				continue
+			}
 		}
 		cluster := s.makeGatewayCluster(cfgSnap, opts)
 
